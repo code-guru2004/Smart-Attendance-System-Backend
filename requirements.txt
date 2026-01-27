@@ -1,23 +1,28 @@
-# Production requirements for Render
+# Web framework
 Flask==2.3.3
 Flask-CORS==4.0.0
 gunicorn==21.2.0
 
-# DeepFace with minimal dependencies
+# AI / Face Recognition
 deepface==0.0.79
-opencv-python-headless==4.8.1.78  # Headless version for server
+tensorflow==2.13.0
+tf-keras==2.13.1
+opencv-python-headless==4.8.1.78
 numpy==1.24.4
 pandas==2.0.3
+scipy==1.10.1
+h5py==3.9.0
+protobuf==3.20.3
 
-# Cloud storage
+# Cloudinary
 cloudinary==1.36.0
 requests==2.31.0
 
 # Database
-pysqlite3-binary==0.5.2  # Binary version for easier installation
+pysqlite3-binary==0.5.2
 
-# Image processing
+# Image handling
 Pillow==10.1.0
 
-# Environment management
+# Environment
 python-dotenv==1.0.0
