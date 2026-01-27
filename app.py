@@ -1538,10 +1538,12 @@ if __name__ == "__main__":
     print("=" * 60)
     
     # Use production server settings for better performance
-    app.run(
-        debug=True,
-        host='0.0.0.0',
-        port=5000,
-        threaded=True,
-        processes=1
-    )
+    # app.run(
+    #     debug=True,
+    #     host='0.0.0.0',
+    #     port=5000,
+    #     threaded=True,
+    #     processes=1
+    # )
+    
+    app.run(debug=True)
