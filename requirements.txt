@@ -1,0 +1,23 @@
+# Production requirements for Render
+Flask==2.3.3
+Flask-CORS==4.0.0
+gunicorn==21.2.0
+
+# DeepFace with minimal dependencies
+deepface==0.0.79
+opencv-python-headless==4.8.1.78  # Headless version for server
+numpy==1.24.4
+pandas==2.0.3
+
+# Cloud storage
+cloudinary==1.36.0
+requests==2.31.0
+
+# Database
+pysqlite3-binary==0.5.2  # Binary version for easier installation
+
+# Image processing
+Pillow==10.1.0
+
+# Environment management
+python-dotenv==1.0.0

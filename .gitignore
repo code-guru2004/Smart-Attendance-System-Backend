@@ -1,0 +1,54 @@
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
+
+# Temporary files
+temp/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database files
+attendance_system.db
+*.db
+*.sqlite
+*.sqlite3
+
+# CSV and generated data
+attendance.csv
+embeddings.pkl
+training_status.json
+
+# Model weights / deepface cache
+.deepface/
+weights/
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build / distribution
+build/
+dist/
+*.egg-info/
+
+# Node (if React frontend inside same repo later)
+node_modules/
+
+# Migration or auto-generated files
+migration.py
