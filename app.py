@@ -1069,6 +1069,418 @@ def sync_cloudinary():
         print(f"Sync error: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
 
+# TEMP Testing route for downloading an image from Cloudinary
+@app.route("/students/images/all", methods=["GET"])
+def get_all_student_images():
+    """Get all student images with pagination and filtering options"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', default=1, type=int)
+        limit = request.args.get('limit', default=50, type=int)
+        roll_number = request.args.get('roll_number', '').strip()
+        batch = request.args.get('batch', '').strip()
+        dept = request.args.get('dept', '').strip()
+        
+        offset = (page - 1) * limit
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Build base query
+            query = '''
+                SELECT 
+                    si.id as image_id,
+                    si.image_url,
+                    si.public_id,
+                    si.image_index,
+                    si.uploaded_date,
+                    s.roll_number,
+                    s.name,
+                    s.department,
+                    s.batch,
+                    s.cloudinary_folder,
+                    s.profile_picture_url
+                FROM student_images si
+                JOIN students s ON si.student_id = s.id
+                WHERE s.is_active = 1
+            '''
+            
+            count_query = '''
+                SELECT COUNT(*)
+                FROM student_images si
+                JOIN students s ON si.student_id = s.id
+                WHERE s.is_active = 1
+            '''
+            
+            params = []
+            count_params = []
+            
+            # Apply filters
+            if roll_number:
+                query += " AND s.roll_number LIKE ?"
+                count_query += " AND s.roll_number LIKE ?"
+                params.append(f'%{roll_number}%')
+                count_params.append(f'%{roll_number}%')
+            
+            if batch:
+                query += " AND s.batch = ?"
+                count_query += " AND s.batch = ?"
+                params.append(batch)
+                count_params.append(batch)
+            
+            if dept:
+                query += " AND s.department = ?"
+                count_query += " AND s.department = ?"
+                params.append(dept)
+                count_params.append(dept)
+            
+            # Order and pagination
+            query += " ORDER BY s.roll_number, si.image_index"
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            # Get total count
+            cursor.execute(count_query, count_params)
+            total = cursor.fetchone()[0]
+            
+            # Get paginated images
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            # Format response
+            images = []
+            for row in rows:
+                row_dict = dict(row)
+                # Format dates if needed
+                if row_dict.get('uploaded_date'):
+                    if isinstance(row_dict['uploaded_date'], str):
+                        row_dict['uploaded_date'] = row_dict['uploaded_date']
+                images.append(row_dict)
+            
+            # Get unique student count
+            if images:
+                cursor.execute('''
+                    SELECT COUNT(DISTINCT s.id) 
+                    FROM student_images si
+                    JOIN students s ON si.student_id = s.id
+                    WHERE s.is_active = 1
+                ''')
+                unique_students = cursor.fetchone()[0]
+            else:
+                unique_students = 0
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "images": images,
+                    "pagination": {
+                        "page": page,
+                        "limit": limit,
+                        "total": total,
+                        "pages": (total + limit - 1) // limit,
+                        "has_more": (page * limit) < total
+                    },
+                    "summary": {
+                        "total_images": total,
+                        "unique_students": unique_students,
+                        "images_per_student": round(total / unique_students, 2) if unique_students > 0 else 0,
+                        "filters_applied": {
+                            "roll_number": roll_number if roll_number else None,
+                            "batch": batch if batch else None,
+                            "department": dept if dept else None
+                        }
+                    }
+                }
+            })
+            
+    except Exception as e:
+        print(f"Error getting all student images: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "message": f"Failed to retrieve images: {str(e)}",
+            "data": []
+        }), 500
+
+
+@app.route("/students/images/summary", methods=["GET"])
+def get_images_summary():
+    """Get summary statistics of student images"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Total images count
+            cursor.execute('SELECT COUNT(*) as total FROM student_images')
+            total_images = cursor.fetchone()['total']
+            
+            # Images by department
+            cursor.execute('''
+                SELECT 
+                    s.department,
+                    COUNT(si.id) as image_count,
+                    COUNT(DISTINCT s.id) as student_count
+                FROM student_images si
+                JOIN students s ON si.student_id = s.id
+                WHERE s.is_active = 1
+                GROUP BY s.department
+                ORDER BY image_count DESC
+            ''')
+            by_department = [dict(row) for row in cursor.fetchall()]
+            
+            # Images by batch
+            cursor.execute('''
+                SELECT 
+                    s.batch,
+                    COUNT(si.id) as image_count,
+                    COUNT(DISTINCT s.id) as student_count
+                FROM student_images si
+                JOIN students s ON si.student_id = s.id
+                WHERE s.is_active = 1
+                GROUP BY s.batch
+                ORDER BY s.batch DESC
+            ''')
+            by_batch = [dict(row) for row in cursor.fetchall()]
+            
+            # Recent uploads (last 7 days)
+            cursor.execute('''
+                SELECT 
+                    DATE(si.uploaded_date) as upload_date,
+                    COUNT(*) as upload_count
+                FROM student_images si
+                WHERE DATE(si.uploaded_date) >= DATE('now', '-7 days')
+                GROUP BY DATE(si.uploaded_date)
+                ORDER BY upload_date DESC
+            ''')
+            recent_uploads = [dict(row) for row in cursor.fetchall()]
+            
+            # Students with image count distribution
+            cursor.execute('''
+                SELECT 
+                    image_count_range,
+                    COUNT(*) as student_count
+                FROM (
+                    SELECT 
+                        s.id,
+                        CASE 
+                            WHEN COUNT(si.id) < 3 THEN 'Below Minimum (<3)'
+                            WHEN COUNT(si.id) = 3 THEN 'Minimum (3)'
+                            WHEN COUNT(si.id) = 4 THEN 'Good (4)'
+                            WHEN COUNT(si.id) >= 5 THEN 'Maximum (5+)'
+                            ELSE 'No Images'
+                        END as image_count_range
+                    FROM students s
+                    LEFT JOIN student_images si ON s.id = si.student_id
+                    WHERE s.is_active = 1
+                    GROUP BY s.id
+                )
+                GROUP BY image_count_range
+                ORDER BY student_count DESC
+            ''')
+            image_distribution = [dict(row) for row in cursor.fetchall()]
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "total_images": total_images,
+                    "by_department": by_department,
+                    "by_batch": by_batch,
+                    "recent_uploads": recent_uploads,
+                    "image_distribution": image_distribution,
+                    "summary": {
+                        "average_images_per_student": round(total_images / len(by_department), 2) if by_department else 0,
+                        "total_departments": len(by_department),
+                        "total_batches": len(by_batch)
+                    }
+                }
+            })
+            
+    except Exception as e:
+        print(f"Error getting images summary: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Failed to get summary: {str(e)}"
+        }), 500
+
+
+@app.route("/students/images/search", methods=["GET"])
+def search_student_images():
+    """Search student images by various criteria"""
+    try:
+        search_term = request.args.get('q', '').strip()
+        search_type = request.args.get('type', 'all')  # all, roll, name, url
+        
+        if not search_term:
+            return jsonify({
+                "success": False,
+                "message": "Search term is required",
+                "data": []
+            }), 400
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            query = '''
+                SELECT 
+                    si.id as image_id,
+                    si.image_url,
+                    si.public_id,
+                    si.image_index,
+                    si.uploaded_date,
+                    s.roll_number,
+                    s.name,
+                    s.department,
+                    s.batch,
+                    s.cloudinary_folder
+                FROM student_images si
+                JOIN students s ON si.student_id = s.id
+                WHERE s.is_active = 1
+            '''
+            
+            params = []
+            
+            if search_type == 'roll':
+                query += " AND s.roll_number LIKE ?"
+                params.append(f'%{search_term}%')
+            elif search_type == 'name':
+                query += " AND s.name LIKE ?"
+                params.append(f'%{search_term}%')
+            elif search_type == 'url':
+                query += " AND si.image_url LIKE ?"
+                params.append(f'%{search_term}%')
+            else:  # all
+                query += " AND (s.roll_number LIKE ? OR s.name LIKE ? OR si.image_url LIKE ?)"
+                params.extend([f'%{search_term}%', f'%{search_term}%', f'%{search_term}%'])
+            
+            query += " ORDER BY s.roll_number, si.image_index LIMIT 100"
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            images = [dict(row) for row in rows]
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "images": images,
+                    "search_info": {
+                        "term": search_term,
+                        "type": search_type,
+                        "results_count": len(images)
+                    }
+                }
+            })
+            
+    except Exception as e:
+        print(f"Error searching student images: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Search failed: {str(e)}",
+            "data": []
+        }), 500
+
+
+@app.route("/students/images/batch/delete", methods=["DELETE"])
+def batch_delete_images():
+    """Delete multiple images by their IDs"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'image_ids' not in data:
+            return jsonify({
+                "success": False,
+                "message": "Image IDs are required"
+            }), 400
+        
+        image_ids = data.get('image_ids', [])
+        
+        if not isinstance(image_ids, list) or len(image_ids) == 0:
+            return jsonify({
+                "success": False,
+                "message": "Image IDs must be a non-empty array"
+            }), 400
+        
+        # Limit batch size for safety
+        if len(image_ids) > 100:
+            return jsonify({
+                "success": False,
+                "message": "Maximum 100 images can be deleted at once"
+            }), 400
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get image details before deletion (for logging and Cloudinary deletion)
+            placeholders = ','.join(['?' for _ in image_ids])
+            cursor.execute(f'''
+                SELECT si.id, si.public_id, si.image_url, s.roll_number, s.name
+                FROM student_images si
+                JOIN students s ON si.student_id = s.id
+                WHERE si.id IN ({placeholders})
+            ''', image_ids)
+            
+            images_to_delete = cursor.fetchall()
+            
+            if not images_to_delete:
+                return jsonify({
+                    "success": False,
+                    "message": "No images found with the provided IDs"
+                }), 404
+            
+            # Delete from Cloudinary first
+            cloudinary_deleted = 0
+            cloudinary_failed = []
+            
+            for img in images_to_delete:
+                if img['public_id']:
+                    if delete_from_cloudinary(img['public_id']):
+                        cloudinary_deleted += 1
+                    else:
+                        cloudinary_failed.append({
+                            "image_id": img['id'],
+                            "public_id": img['public_id']
+                        })
+            
+            # Delete from database
+            cursor.execute(f'DELETE FROM student_images WHERE id IN ({placeholders})', image_ids)
+            db_deleted = cursor.rowcount
+            
+            # Update student image counts
+            cursor.execute(f'''
+                UPDATE students 
+                SET image_count = (
+                    SELECT COUNT(*) 
+                    FROM student_images 
+                    WHERE student_id = students.id
+                )
+                WHERE id IN (
+                    SELECT DISTINCT student_id 
+                    FROM student_images 
+                    WHERE id IN ({placeholders})
+                )
+            ''', image_ids)
+            
+            conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "message": f"Deleted {db_deleted} images",
+                "details": {
+                    "total_requested": len(image_ids),
+                    "deleted_from_database": db_deleted,
+                    "deleted_from_cloudinary": cloudinary_deleted,
+                    "cloudinary_failed": cloudinary_failed,
+                    "affected_students": len(set(img['roll_number'] for img in images_to_delete))
+                }
+            })
+            
+    except Exception as e:
+        print(f"Error in batch delete: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "message": f"Batch delete failed: {str(e)}"
+        }), 500
 # ==================== EXISTING ENDPOINTS (UNCHANGED) ====================
 
 @app.route("/attendance", methods=["GET"])
