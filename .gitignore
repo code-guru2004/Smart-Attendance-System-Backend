@@ -29,7 +29,7 @@ attendance_system.db
 
 # CSV and generated data
 attendance.csv
-embeddings.pkl
+
 training_status.json
 
 # Model weights / deepface cache
