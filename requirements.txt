@@ -1,13 +1,15 @@
 flask
 flask-cors
-opencv-python-headless
+opencv-python
 pandas
 numpy
 deepface
+tensorflow
 tf-keras
-python-dotenv
 cloudinary
 requests
+python-dotenv
 Pillow
-sqlite3-binary
+gunicorn
+
 
