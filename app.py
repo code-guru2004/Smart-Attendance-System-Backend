@@ -153,8 +153,10 @@ def get_cloudinary_images(batch=None, dept=None, roll_number=None):
 # ==================== DATABASE FUNCTIONS ====================
 
 def init_database():
-    """Initialize SQLite database with required tables"""
-    conn = sqlite3.connect(DATABASE_FILE)
+    """Initialize SQLite database with all required tables"""
+    print(f"Initializing database at: {DATABASE_FILE}")
+    
+    conn = sqlite3.connect(str(DATABASE_FILE))
     cursor = conn.cursor()
     
     # Students table - stores all registered students
@@ -174,8 +176,67 @@ def init_database():
     )
     ''')
     
-    # ... rest of the function ...
+    # Student images table - stores Cloudinary image URLs
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS student_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        image_url TEXT NOT NULL,
+        public_id TEXT NOT NULL UNIQUE,
+        image_index INTEGER,
+        uploaded_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (student_id) REFERENCES students (id) ON DELETE CASCADE
+    )
+    ''')
+    
+    # Attendance table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER,
+        roll_number TEXT NOT NULL,
+        name TEXT NOT NULL,
+        department TEXT NOT NULL,
+        batch TEXT NOT NULL,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        confidence_score REAL,
+        recognition_time REAL,
+        FOREIGN KEY (student_id) REFERENCES students (id) ON DELETE SET NULL
+    )
+    ''')
+    
+    # Create indexes for better performance
+    cursor.execute('''
+    CREATE INDEX IF NOT EXISTS idx_student_images_student_id 
+    ON student_images(student_id)
+    ''')
+    
+    cursor.execute('''
+    CREATE INDEX IF NOT EXISTS idx_student_images_url 
+    ON student_images(image_url)
+    ''')
+    
+    cursor.execute('''
+    CREATE INDEX IF NOT EXISTS idx_attendance_date 
+    ON attendance(date)
+    ''')
+    
+    cursor.execute('''
+    CREATE INDEX IF NOT EXISTS idx_attendance_roll_date 
+    ON attendance(roll_number, date)
+    ''')
+    
+    conn.commit()
+    conn.close()
+    
+    print("Database initialization completed")
+    
+    # Run migration to ensure all columns exist
+    migrate_database()
 
+    
 def migrate_database():
     """Check and add missing columns to existing tables"""
     conn = sqlite3.connect(DATABASE_FILE)
